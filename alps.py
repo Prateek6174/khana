@@ -377,8 +377,9 @@ h1, h2, h3, h4, h5, h6 {{ color:{text_main} !important; }}
 # ── Corner nav buttons — same-window Streamlit buttons ───────────────────────
 if swiss:
     _, nav_col = st.columns([6.2, 2.0])
+
     with nav_col:
-        if st.button("Ahmedabad", key="go_normal", use_container_width=True):
+        if st.button("Kota", key="go_normal", use_container_width=True):
             st.session_state.swiss = False
             st.session_state.success = None
             st.session_state.lang = "EN"
@@ -386,7 +387,7 @@ if swiss:
 else:
     nav_col, _ = st.columns([1.6, 6.6])
     with nav_col:
-        if st.button("Zurich", key="go_swiss", use_container_width=True):
+        if st.button("Lenzburg", key="go_swiss", use_container_width=True):
             st.session_state.swiss = True
             st.session_state.success = None
             st.session_state.lang = "DE"
@@ -562,7 +563,7 @@ if uploaded:
 if st.session_state.df is not None:
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown(f'<p class="day-label">{T["day_label"]}</p>', unsafe_allow_html=True)
-    output_path = str(Path.home() / "Downloads" / "FoodSheets")
+    output_path = str(Path.home() / "Downloads" / "Khaana")
     days   = T["days"]
     dcols  = st.columns(5, gap="small")
     clicked = None
