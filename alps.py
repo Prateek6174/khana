@@ -6,10 +6,6 @@ from openpyxl.utils import get_column_letter
 from pathlib import Path
 import datetime
 
-import streamlit as st
-
-st.write("XSRF:", st.get_option("server.enableXsrfProtection"))
-st.write("Max upload size:", st.get_option("server.maxUploadSize"))
 
 st.set_page_config(
     page_title="Food Preference Manager",
