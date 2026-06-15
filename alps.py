@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ── Session state ──────────────────────────────────────────────────────────────
-for k, v in [("df", None), ("success", None), ("swiss", False), ("lang", "EN")]:
+for k, v in [("df", None), ("success", None), ("swiss", True), ("lang", "EN")]:
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -27,10 +27,10 @@ LANGS = {
         "eyebrow": "Confidential-To be accessed only by the GC Lead Admin ",
         "title": "TATA's Bread and Butter",
         "sub": "From the streets of Kota to the quiet hills of Lenzburg.",
-        "day_label": "SELECT A DAY TO GENERATE ALL 7 SHEETS",
+        "day_label": "SELECT A DAY TO GENERATE ALL 8 SHEETS",
         "days": ["Monday","Tuesday","Wednesday","Thursday","Friday"],
         "loading": "Generating sheets for {}…",
-        "saved": "7 sheets saved",
+        "saved": "8 sheets saved",
         "tagline": "",
     },
     "DE": {
@@ -376,32 +376,17 @@ h1, h2, h3, h4, h5, h6 {{ color:{text_main} !important; }}
 # ── Corner nav buttons — separate markdown so no f-string escaping issues ────
 # ── Corner nav buttons — same-window Streamlit buttons ────
 # ── Corner nav buttons — same-window Streamlit buttons ───────────────────────
-if swiss:
-    _, nav_col = st.columns([6.2, 2.0])
 
-    with nav_col:
-        if st.button("Kota", key="go_normal", use_container_width=True):
-            st.session_state.swiss = False
-            st.session_state.success = None
-            st.session_state.lang = "EN"
-            st.rerun()
-else:
-    nav_col, _ = st.columns([1.6, 6.6])
-    with nav_col:
-        if st.button("Lenzburg", key="go_swiss", use_container_width=True):
-            st.session_state.swiss = True
-            st.session_state.success = None
-            st.session_state.lang = "DE"
-            st.rerun()
 # ── Query-param based navigation (corner buttons) ────────────────────────────)
 
 # ── Language switcher (Swiss only, horizontal pills) ──────────────────────────
 if swiss:
-    lc1,lc2,lc3,lc4,_ = st.columns([1,1,1,1,4], gap="small")
+    lang_labels = {"EN": "English", "DE": "Deutsch", "FR": "Français", "IT": "Italiano"}
+    lc1,lc2,lc3,lc4,_ = st.columns([1.8,1.7,1.9,1.7,1.4], gap="small")
     for col_l, lk in zip([lc1,lc2,lc3,lc4], ["EN","DE","FR","IT"]):
         with col_l:
             mark = "✦ " if st.session_state.lang == lk else ""
-            if st.button(f"{mark}{lk}", key=f"lang_{lk}"):
+            if st.button(f"{mark}{lang_labels[lk]}", key=f"lang_{lk}", use_container_width=True):
                 st.session_state.lang = lk; st.rerun()
 
 # ── CET Clock (Swiss only) ─────────────────────────────────────────────────────
@@ -517,34 +502,245 @@ def create_excel(category_name, employees):
     fc.value=f"Total Employees: {len(employees)}"; fc.font=Font(name="Calibri",italic=True,size=9,color="94A3B8"); fc.alignment=Alignment(horizontal="right",vertical="center")
     ws.print_title_rows="4:4"; return wb
 
-def generate_excels_for_day(df, day_local, output_base):
-    day_key = DAY_MAP_EN.get(day_local,"mon"); day_en = DAY_EN_MAP.get(day_local,day_local)
-    d = Path(output_base)/day_en; bf=d/"Breakfast"; lf=d/"Lunch"; sf=d/"Snacks"
-    for f in [bf,lf,sf]: f.mkdir(parents=True, exist_ok=True)
-    df = df.copy(); df.columns=[str(c).strip() for c in df.columns]
-    cm = {c.lower().strip():c for c in df.columns}
-    nc=ic=bc=lc=sc=None
-    for k,v in cm.items():
-        if "employee name" in k or k=="name":               nc=v
-        if k in ("employee","employee id","emp id","empid"): ic=v
-        if "breakfast" in k:                                 bc=v
-        if "lunch"     in k:                                 lc=v
-        if "snack"     in k:                                 sc=v
-    if not nc: raise ValueError(f"Employee Name column not found. Cols: {list(df.columns)}")
-    if not ic: raise ValueError(f"Employee ID column not found. Cols: {list(df.columns)}")
-    fm = pd.Series([False]*len(df), index=df.index)
-    def ge(mask):
-        s=df.loc[mask,[nc,ic]].copy(); s=s.dropna(subset=[nc]); s=s[s[nc].astype(str).str.strip()!=""]
-        return [{"name":str(r[nc]).strip(),"id":str(r[ic]).strip()} for _,r in s.iterrows()]
-    for cat,kw in [("Eggs","with eggs"),("No Eggs","no eggs")]:
-        mask=df[bc].astype(str).str.strip().str.lower()==kw if bc else fm
-        create_excel(f"Breakfast - {cat}",ge(mask)).save(str(bf/f"Breakfast_{cat.replace(' ','_')}.xlsx"))
-    for cat,kw in [("Veg","veg"),("Non-Veg","non-veg"),("Jain","jain"),("Fruit Plate","fruit plate")]:
-        mask=df[lc].astype(str).str.strip().str.lower()==kw if lc else fm
-        create_excel(f"Lunch - {cat}",ge(mask)).save(str(lf/f"Lunch_{cat.replace(' ','_').replace('-','')}.xlsx"))
-    mask=df[sc].apply(lambda x: day_key.lower() in [p.strip().lower() for p in str(x).split(";")]) if sc else fm
-    create_excel("Snacks",ge(mask)).save(str(sf/f"Snacks_{day_en}.xlsx"))
+def create_summary_excel(day_en, summary_rows, total_unique, output_path):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Summary"
+    ws.sheet_view.showGridLines = False
 
+    ws.column_dimensions["A"].width = 3
+    ws.column_dimensions["B"].width = 26
+    ws.column_dimensions["C"].width = 22
+    ws.column_dimensions["D"].width = 14
+    ws.column_dimensions["E"].width = 14
+
+    title_fill = PatternFill("solid", fgColor="7C1D1D")
+    header_fill = PatternFill("solid", fgColor="1E3A5F")
+    body_fill = PatternFill("solid", fgColor="F8FAFC")
+    accent_fill = PatternFill("solid", fgColor="DBEAFE")
+    total_fill = PatternFill("solid", fgColor="DCFCE7")
+
+    thin = Side(style="thin", color="D1D5DB")
+    bdr = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    ws.merge_cells("B2:E2")
+    c = ws["B2"]
+    c.value = f"Meal Summary — {day_en}"
+    c.font = Font(name="Calibri", size=16, bold=True, color="FFFFFF")
+    c.fill = title_fill
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[2].height = 28
+
+    ws.merge_cells("B3:E3")
+    c = ws["B3"]
+    c.value = "Unique employees counted once by Employee ID. Duplicate IDs are removed before summary generation."
+    c.font = Font(name="Calibri", size=10, italic=True, color="475569")
+    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[3].height = 34
+
+    headers = ["Category", "Choice", "Count", "Share %"]
+    for col, hdr in enumerate(headers, start=2):
+        cell = ws.cell(5, col, hdr)
+        cell.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = bdr
+
+    row = 6
+    for section, choice, count in summary_rows:
+        share = (count / total_unique) if total_unique else 0
+        values = [section, choice, count, share]
+
+        for col, val in enumerate(values, start=2):
+            cell = ws.cell(row, col, val)
+            cell.border = bdr
+            cell.alignment = Alignment(
+                horizontal="center" if col in (4, 5) else "left",
+                vertical="center"
+            )
+            cell.font = Font(name="Calibri", size=11, bold=(col == 2))
+            cell.fill = accent_fill if col == 2 else body_fill
+            if col == 5:
+                cell.number_format = "0.0%"
+        row += 1
+
+    ws.merge_cells(f"B{row}:C{row}")
+    c1 = ws[f"B{row}"]
+    c1.value = "Total Unique Employees"
+    c1.font = Font(name="Calibri", size=11, bold=True, color="166534")
+    c1.fill = total_fill
+    c1.alignment = Alignment(horizontal="center", vertical="center")
+    c1.border = bdr
+
+    c2 = ws[f"D{row}"]
+    c2.value = total_unique
+    c2.font = Font(name="Calibri", size=11, bold=True, color="166534")
+    c2.fill = total_fill
+    c2.alignment = Alignment(horizontal="center", vertical="center")
+    c2.border = bdr
+
+    c3 = ws[f"E{row}"]
+    c3.value = 1 if total_unique else 0
+    c3.number_format = "0.0%"
+    c3.font = Font(name="Calibri", size=11, bold=True, color="166534")
+    c3.fill = total_fill
+    c3.alignment = Alignment(horizontal="center", vertical="center")
+    c3.border = bdr
+
+    row += 2
+    ws.merge_cells(f"B{row}:E{row}")
+    c = ws[f"B{row}"]
+    c.value = f"Generated on {datetime.datetime.now().strftime('%d %b %Y %H:%M')}"
+    c.font = Font(name="Calibri", size=9, italic=True, color="64748B")
+    c.alignment = Alignment(horizontal="right", vertical="center")
+
+    wb.save(str(output_path))
+
+def generate_excels_for_day(df, day_local, output_base):
+    day_key = DAY_MAP_EN.get(day_local, "mon")
+    day_en = DAY_EN_MAP.get(day_local, day_local)
+
+    d = Path(output_base) / day_en
+    bf = d / "Breakfast"
+    lf = d / "Lunch"
+    sf = d / "Snacks"
+    sm = d / "Summary"
+
+    for folder in (bf, lf, sf, sm):
+        folder.mkdir(parents=True, exist_ok=True)
+
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    nc = ic = bc = lc = sc = None
+    for c in df.columns:
+        cl = str(c).lower().strip().replace("\n", " ").replace("\r", " ")
+
+        if cl == "employee name":
+            nc = c
+        if cl in ("employee id", "employee"):
+            ic = c
+        if "breakfast" in cl and day_key in cl:
+            bc = c
+        if "lunch" in cl and day_key in cl:
+            lc = c
+        if "snack" in cl:
+            sc = c
+
+    if not nc:
+        raise ValueError(f"Employee Name column not found. Columns: {list(df.columns)}")
+    if not ic:
+        raise ValueError(f"Employee ID / Employee column not found. Columns: {list(df.columns)}")
+
+    def clean_id(v):
+        if pd.isna(v):
+            return ""
+        s = str(v).strip()
+        if not s or s.lower() == "nan":
+            return ""
+        try:
+            return str(int(float(s)))
+        except Exception:
+            return s
+
+    def clean_name(v):
+        if pd.isna(v):
+            return ""
+        s = str(v).strip()
+        return "" if (not s or s.lower() == "nan") else s
+
+    def norm(v):
+        if pd.isna(v):
+            return ""
+        s = str(v).strip().lower()
+        s = s.replace("_", " ").replace("-", " ")
+        s = " ".join(s.split())
+        return s
+
+    df[ic] = df[ic].apply(clean_id)
+    df[nc] = df[nc].apply(clean_name)
+
+    df = df[(df[ic] != "") & (df[nc] != "")].copy()
+
+    order_cols = [
+        c for c in df.columns
+        if str(c).strip().lower() in ("completion time", "timestamp", "completed at", "end time")
+    ]
+
+    if order_cols:
+        oc = order_cols[0]
+        try:
+            dt = pd.to_datetime(df[oc], errors="coerce")
+            df = df.assign(__order__=dt, __seq__=range(len(df))).sort_values(["__order__", "__seq__"])
+        except Exception:
+            df = df.assign(__seq__=range(len(df))).sort_values(["__seq__"])
+    else:
+        df = df.assign(__seq__=range(len(df))).sort_values(["__seq__"])
+
+    df = df.drop_duplicates(subset=[ic], keep="last").reset_index(drop=True)
+
+    false_mask = pd.Series(False, index=df.index)
+
+    def get_people(mask):
+        subset = df.loc[mask, [nc, ic]].copy()
+        subset = subset.drop_duplicates(subset=[ic], keep="first")
+        return [
+            {"name": str(r[nc]).strip(), "id": str(r[ic]).strip()}
+            for _, r in subset.iterrows()
+            if str(r[nc]).strip() and str(r[ic]).strip()
+        ]
+
+    bnorm = df[bc].apply(norm) if bc else pd.Series([""] * len(df), index=df.index)
+    lnorm = df[lc].apply(norm) if lc else pd.Series([""] * len(df), index=df.index)
+
+    breakfast_people = {
+        "Eggs": get_people(bnorm.eq("with eggs") if bc else false_mask),
+        "No Eggs": get_people((bnorm.eq("without eggs") | bnorm.eq("no eggs")) if bc else false_mask),
+    }
+
+    lunch_people = {
+        "Veg": get_people(lnorm.eq("veg") if lc else false_mask),
+        "Non-Veg": get_people((lnorm.eq("non veg") | lnorm.eq("nonveg")) if lc else false_mask),
+        "Jain": get_people(lnorm.eq("jain") if lc else false_mask),
+        "Fruit Plate": get_people((lnorm.eq("fruit plate") | lnorm.eq("fruitplate")) if lc else false_mask),
+    }
+
+    if sc:
+        def snack_match(x):
+            if pd.isna(x):
+                return False
+            s = str(x).strip()
+            if not s or s.lower() == "nan":
+                return False
+            tokens = [t.strip().lower() for t in s.split(";") if t.strip()]
+            return day_key.lower() in tokens
+
+        snack_people = get_people(df[sc].apply(snack_match))
+    else:
+        snack_people = []
+
+    create_excel("Breakfast - Eggs", breakfast_people["Eggs"]).save(str(bf / "Breakfast_Eggs.xlsx"))
+    create_excel("Breakfast - No Eggs", breakfast_people["No Eggs"]).save(str(bf / "Breakfast_No_Eggs.xlsx"))
+
+    create_excel("Lunch - Veg", lunch_people["Veg"]).save(str(lf / "Lunch_Veg.xlsx"))
+    create_excel("Lunch - Non-Veg", lunch_people["Non-Veg"]).save(str(lf / "Lunch_NonVeg.xlsx"))
+    create_excel("Lunch - Jain", lunch_people["Jain"]).save(str(lf / "Lunch_Jain.xlsx"))
+    create_excel("Lunch - Fruit Plate", lunch_people["Fruit Plate"]).save(str(lf / "Lunch_Fruit_Plate.xlsx"))
+
+    create_excel("Snacks", snack_people).save(str(sf / f"Snacks_{day_en}.xlsx"))
+
+    summary_rows = [
+        ("Breakfast", "Eggs", len(breakfast_people["Eggs"])),
+        ("Breakfast", "No Eggs", len(breakfast_people["No Eggs"])),
+        ("Lunch", "Veg", len(lunch_people["Veg"])),
+        ("Lunch", "Non-Veg", len(lunch_people["Non-Veg"])),
+        ("Lunch", "Jain", len(lunch_people["Jain"])),
+        ("Lunch", "Fruit Plate", len(lunch_people["Fruit Plate"])),
+        ("Snacks", day_en, len(snack_people)),
+    ]
+
+    total_unique = int(df[ic].nunique())
+    create_summary_excel(day_en, summary_rows, total_unique, sm / f"Summary_{day_en}.xlsx")
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN CONTENT
 # ══════════════════════════════════════════════════════════════════════════════
